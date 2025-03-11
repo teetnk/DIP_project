@@ -1,98 +1,138 @@
+from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask_cors import CORS
 import os
-import json
-import numpy as np
-import tensorflow as tf
-import requests
-from flask import Flask, request, jsonify
-from io import BytesIO
-from tensorflow.keras.preprocessing import image
+import torch
+import timm
+import torchvision.transforms as transforms
 from PIL import Image
-import boto3
-import logging
-import train_model
-
-# ✅ ตั้งค่า LINE API
-LINE_CHANNEL_ACCESS_TOKEN = "NpMQ7DSOlkaLp0/Q60f31LJER7OBd0rqvVPmg58ZqwDMd6ecU7OUiTviXf56u1YmSR+GuoRl+2hVC6kVAFAwtBSE9b07HLaKxSGYOBDUQjzHVigxujMyKEc35QDtv2NhHKRXacAJKNiy377Dnxcr0AdB04t89/1O/w1cDnyilFU="
-
-# ✅ โหลดโมเดลที่เทรนเสร็จแล้ว
-model = tf.keras.models.load_model("food_model_trained.h5")
-class_names = ["ต้มยำกุ้ง", "กะเพราไก่", "ข้าวมันไก่"]  # 🔹 เปลี่ยนตาม Class ของโมเดล
+import base64
+from io import BytesIO
+import json
+import shutil
 
 app = Flask(__name__)
+CORS(app)
 
-# ✅ ตั้งค่า S3 และ DynamoDB
-s3 = boto3.client('s3')
-dynamodb = boto3.resource('dynamodb')
-table_name = os.getenv('LINE_BOT_TABLE', None)
-table = dynamodb.Table(table_name)
+# 📌 กำหนดโฟลเดอร์
+UPLOAD_FOLDER = r"C:\Users\uouku\Desktop\DIP_project_code\Test_Food"
+STATIC_FOLDER = "static"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# 📌 ฟังก์ชันทำนายเมนูอาหาร
-def predict_image(img):
-    img = img.resize((224, 224))
-    img_array = image.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0) / 255.0
+# 📌 ตรวจสอบ GPU
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"🔥 ใช้: {device}")
 
-    predictions = model.predict(img_array)
-    predicted_class = class_names[np.argmax(predictions)]
-    confidence = np.max(predictions)
+# 📌 โหลดโมเดลและข้อมูล
+MODEL_PATH = "food_model_vit_best.pth"
+CLASS_NAMES = sorted(os.listdir("food_images_1"))  # รีเซ็ตจาก dataset เดิม
+NUTRITION_FILE = "food_nutrition.json"
 
-    return predicted_class, confidence
+# โหลดโมเดล
+model = timm.create_model("vit_base_patch16_224", pretrained=False, num_classes=len(CLASS_NAMES))
+try:
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    model.to(device)
+    model.eval()
+    print(f"✅ โหลดโมเดลสำเร็จ จำนวนคลาส: {len(CLASS_NAMES)}")
+except Exception as e:
+    print(f"❌ ไม่สามารถโหลดโมเดลได้: {e}")
+    raise
 
-# 📌 ฟังก์ชันส่งข้อความไปยัง LINE
-def send_line_message(user_id, text):
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = {
-        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
+# โหลดข้อมูลโภชนาการ
+try:
+    with open(NUTRITION_FILE, "r", encoding="utf-8") as f:
+        NUTRITION_DATA = json.load(f)
+except FileNotFoundError:
+    NUTRITION_DATA = {
+        "แกงขี้เหล็ก": {"calories": 150, "protein": 5, "fat": 8},
+        "ข้าวผัด": {"calories": 200, "protein": 6, "fat": 10}
     }
-    data = {
-        "to": user_id,
-        "messages": [{"type": "text", "text": text}]
-    }
-    requests.post(url, headers=headers, json=data)
 
-# 📌 Webhook API ที่รับรูปจาก LINE
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    try:
-        data = request.get_json()
-        if "events" in data:
-            for event in data["events"]:
-                if event.get("message", {}).get("type") == "image":
-                    user_id = event["source"]["userId"]
-                    message_id = event["message"]["id"]
+# 📌 Transform
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+])
 
-                    # 📌 ดึงรูปจาก LINE
-                    image_url = f"https://api-data.line.me/v2/bot/message/{message_id}/content"
-                    headers = {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"}
-                    response = requests.get(image_url, headers=headers)
-
-                    if response.status_code == 200:
-                        img = Image.open(BytesIO(response.content))
-                        predicted_class, confidence = predict_image(img)
-
-                        response_text = f"📸 ฉันคิดว่านี่คือ {predicted_class} 🍽️\nความมั่นใจ: {confidence:.2f}%"
-                        send_line_message(user_id, response_text)
-
-        return jsonify({"status": "ok"}), 200
-
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-# 📌 Route สำหรับตรวจสอบว่าเซิร์ฟเวอร์ทำงานอยู่
-@app.route("/", methods=["GET"])
+# 📌 เสิร์ฟหน้าเว็บ
+@app.route("/")
 def home():
-    return "✅ Flask Server is Running!", 200
+    return render_template("index.html")
 
-# 📌 Route สำหรับ Trigger เทรนโมเดลใหม่
-@app.route("/train", methods=["POST"])
-def train():
-    try:
-        train_model()
-        return jsonify({"status": "ok", "message": "Training started!"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+# 📌 เสิร์ฟ Static Files
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory(STATIC_FOLDER, filename)
+
+# 📌 ฟังก์ชันพยากรณ์
+def predict_image(image):
+    img = transform(image).unsqueeze(0).to(device)
+    with torch.no_grad():
+        output = model(img)
+        probs = torch.nn.functional.softmax(output, dim=1)
+        conf, predicted_idx = torch.max(probs, 1)
+    
+    predicted_class = CLASS_NAMES[predicted_idx.item()]
+    confidence = conf.item() * 100
+    nutrition = NUTRITION_DATA.get(predicted_class, {})
+    return predicted_class, confidence, nutrition
+
+# 📌 API ทำนายอาหารและบันทึก
+@app.route("/predict", methods=["POST"])
+def predict():
+    data = request.get_json()
+    if not data or 'image' not in data:
+        return jsonify({'error': 'No image provided'}), 400
+    
+    image_data = data['image'].split(',')[1]
+    img_bytes = base64.b64decode(image_data)
+    img = Image.open(BytesIO(img_bytes)).convert("RGB")
+    
+    food_name, confidence, nutrition = predict_image(img)
+    
+    if confidence >= 70:
+        class_folder = os.path.join(UPLOAD_FOLDER, food_name)
+    else:
+        class_folder = os.path.join(UPLOAD_FOLDER, "unknown")
+    os.makedirs(class_folder, exist_ok=True)
+    filename = get_next_filename(f"{food_name}.jpg", class_folder)
+    file_path = os.path.join(class_folder, filename)
+    img.save(file_path)
+    
+    return jsonify({
+        "food_name": food_name,
+        "confidence": f"{confidence:.2f}%",
+        "nutrition": nutrition,
+        "saved_path": file_path,
+        "needs_label": confidence < 70
+    })
+
+# 📌 API อัพเดท label
+@app.route("/update_label", methods=["POST"])
+def update_label():
+    data = request.get_json()
+    if not data or 'path' not in data or 'label' not in data:
+        return jsonify({'error': 'Missing path or label'}), 400
+    
+    old_path = data['path']
+    new_label = data['label']
+    new_folder = os.path.join(UPLOAD_FOLDER, new_label)
+    os.makedirs(new_folder, exist_ok=True)
+    
+    new_path = os.path.join(new_folder, os.path.basename(old_path))
+    shutil.move(old_path, new_path)
+    
+    return jsonify({"status": "success", "message": f"อัพเดทเป็น {new_label}"})
+
+def get_next_filename(filename, folder):
+    name, ext = os.path.splitext(filename)
+    counter = 1
+    new_filename = filename
+    while os.path.exists(os.path.join(folder, new_filename)):
+        new_filename = f"{name}_{counter}{ext}"
+        counter += 1
+    return new_filename
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
