@@ -27,13 +27,13 @@
         <p id="foodName">ชื่ออาหาร: -</p>
         <p id="confidence">ความมั่นใจ: -</p>
     </div>
-
+    
     <div id="labelInput" style="display: none;">
-        <label for="newLabel">โมเดลไม่มั่นใจ กรุณาระบุชื่ออาหาร: </label>
-        <input list="food-list" id="newLabel" placeholder="เช่น ขนมตาล">
+        <label for="newLabel">โมเดลไม่มั่นใจ กรุณาเลือกหรือพิมพ์ชื่ออาหาร: </label>
+        <input list="food-list" id="newLabel" name="newLabel" placeholder="เลือกหรือพิมพ์ชื่ออาหาร">
         <datalist id="food-list"></datalist>
         <button id="submitLabel">✔️ ส่ง</button>
-    </div>
+    </div>    
 
     <div id="trainingStatus" style="display: none; margin-top: 20px; color: #3498db;">
         <p>⏳ กำลังอัพเดทโมเดล...</p>
