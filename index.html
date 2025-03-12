@@ -4,41 +4,57 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI วิเคราะห์อาหาร</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <h1>🍱 AI วิเคราะห์อาหาร</h1>
 
-    <!-- 📸 กล้องสำหรับถ่ายภาพ -->
     <div>
-        <video id="cameraPreview" autoplay playsinline style="max-width: 100%;"></video>
+        <video id="cameraPreview" autoplay playsinline></video>
         <button id="capture">📸 ถ่ายภาพ</button>
         <canvas id="canvas" style="display: none;"></canvas>
     </div>
-    <img id="photo" src="#" alt="รูปภาพที่ถ่าย" style="max-width: 100%; display: none; margin-top: 10px;">
+    <img id="photo" src="#" alt="รูปภาพที่ถ่าย" style="display: none; margin-top: 10px;">
+    <img id="edgePhoto" src="#" alt="ภาพขอบอาหาร" style="display: none; margin-top: 10px;">
 
-    <!-- 📂 อัพโหลดไฟล์ -->
     <h2>📂 หรือเลือกไฟล์จากแกลเลอรี่</h2>
     <input type="file" id="fileInput" accept="image/*" style="display: none;">
     <button id="uploadButton">⬆️ อัพโหลดไฟล์</button>
+    <button id="resetButton">🔄 ถ่ายใหม่</button>
 
-    <!-- 📌 แสดงผลลัพธ์ -->
-    <p id="result">กำลังรอผลลัพธ์...</p>
+    <div class="result-container">
+        <p id="foodName">ชื่ออาหาร: -</p>
+        <p id="confidence">ความมั่นใจ: -</p>
+    </div>
 
-    <!-- กล่องสำหรับป้อน label ถ้าโมเดลไม่มั่นใจ -->
-    <div id="labelInput" style="display: none; margin-top: 10px;">
+    <div id="labelInput" style="display: none;">
         <label for="newLabel">โมเดลไม่มั่นใจ กรุณาระบุชื่ออาหาร: </label>
-        <input type="text" id="newLabel" placeholder="เช่น ข้าวผัด">
+        <input type="text" id="newLabel" placeholder="เช่น ขนมตาล">
+        <label for="calories">แคลอรี่: </label>
+        <input type="number" id="calories" placeholder="เช่น 550" min="0">
         <button id="submitLabel">✔️ ส่ง</button>
     </div>
 
-    <!-- 🍽️ ข้อมูลโภชนาการ -->
-    <div id="nutritionInfo" style="display: none;">
-        <h3>🍽️ ข้อมูลโภชนาการ</h3>
-        <pre id="nutritionResult"></pre>
+    <div id="trainingStatus" style="display: none; margin-top: 20px; color: #3498db;">
+        <p>⏳ กำลังอัพเดทโมเดล...</p>
     </div>
 
-    <!-- โหลด JavaScript -->
+    <div id="nutritionInfo" style="display: none;">
+        <h3>🍽️ ข้อมูลโภชนาการ</h3>
+        <table id="nutritionTable">
+            <tr>
+                <th>ข้อมูล</th>
+                <th>ปริมาณ</th>
+            </tr>
+        </table>
+    </div>
+
+    <div id="historyContainer" style="margin-top: 20px;">
+        <h3>📜 ประวัติอาหารล่าสุด</h3>
+        <ul id="foodHistory" style="list-style: none; padding: 0;"></ul>
+    </div>
+
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
