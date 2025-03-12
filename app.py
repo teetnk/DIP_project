@@ -13,19 +13,26 @@ import cv2
 import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import datasets
+import time
+from threading import Lock
 
 app = Flask(__name__)
 CORS(app)
 
 # 📌 กำหนดโฟลเดอร์
-UPLOAD_FOLDER = r"C:\Users\uouku\Desktop\DIP_PROJECT_CODE\Test_Food"
+UPLOAD_FOLDER = r"C:\งานตั้น\DIP\DIP_project\uploaded_images"
 STATIC_FOLDER = "static"
-TRAINING_FOLDER = r"C:\Users\uouku\Desktop\DIP_PROJECT_CODE\food_images_1"
+TRAINING_FOLDER = r"C:\งานตั้น\DIP\DIP_project\food_images_1"
 MODEL_PATH = "food_model_vit_best.pth"
 CLASS_FILE = "food_classes.json"
-NUTRITION_FILE = "food_nutrition_fixed.json"  
+NUTRITION_FILE = "food_nutrition_fixed.json"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(TRAINING_FOLDER, exist_ok=True)
+
+# 📌 ตัวแปรควบคุมการเทรน
+is_training = False
+training_lock = Lock()  # ล็อกเพื่อป้องกันการเข้าถึงพร้อมกัน
+train_queue = []  # คิวสำหรับเก็บคลาสที่ต้องเทรน
 
 # 📌 ตรวจสอบ GPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -85,9 +92,7 @@ try:
     print(f"✅ โหลดข้อมูลโภชนาการสำเร็จ: {list(NUTRITION_DATA['foods'].keys())}")
 except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
     print(f"❌ ไม่สามารถโหลด food_nutrition_fixed.json ได้: {e}")
-    NUTRITION_DATA = None  # 🔥 ไม่สร้างค่าเริ่มต้น แต่ให้เป็น None
-    # คุณอาจต้องการหยุดการทำงานหรือแจ้งผู้ใช้เพิ่มเติมใน production
-    # เช่น: raise Exception("กรุณาตรวจสอบ food_nutrition_fixed.json")
+    NUTRITION_DATA = None
 
 # 📌 Transform สำหรับการทำนาย
 predict_transform = transforms.Compose([
@@ -138,7 +143,7 @@ def detect_edges(image):
 
 def predict_image(image):
     if NUTRITION_DATA is None:
-        return None, 0, {}, ""  # 🔥 คืนค่าเริ่มต้นถ้าไม่มีข้อมูลโภชนาการ
+        return None, 0, {}, ""
     
     enhanced_image = enhance_image(image)
     img = predict_transform(enhanced_image).unsqueeze(0).to(device)
@@ -149,7 +154,7 @@ def predict_image(image):
     
     predicted_class = CLASS_NAMES[predicted_idx.item()]
     confidence = conf.item() * 100
-    nutrition = NUTRITION_DATA.get("foods", {}).get(predicted_class, {})  # 🔥 ใช้โครงสร้างจาก food_nutrition_fixed.json
+    nutrition = NUTRITION_DATA.get("foods", {}).get(predicted_class, {})
     
     edge_image = detect_edges(image)
     edge_buffer = BytesIO()
@@ -195,8 +200,8 @@ def predict():
 
 @app.route("/update_label", methods=["POST"])
 def update_label():
-    global model, CLASS_NAMES
-    
+    global model, CLASS_NAMES, is_training, train_queue
+
     data = request.get_json()
     print(f"📥 ได้รับค่า: {data}")
     
@@ -206,7 +211,7 @@ def update_label():
     
     old_path = data['path']
     new_label = str(data['label']).strip()
-    nutrition = data.get('nutrition', {})  # 🔥 รับข้อมูลโภชนาการ
+    nutrition = data.get('nutrition', {})
     
     print(f"📂 ค่าที่ได้รับ: path={old_path}, label={new_label}, nutrition={nutrition}")
     
@@ -245,48 +250,64 @@ def update_label():
     num_images = len(os.listdir(new_folder))
     print(f"📸 จำนวนภาพใน {new_label}: {num_images}")
     
-    if is_new_class or num_images >= 5:
-        print("🔄 กำลังเรียก retrain_model()...")
-        retrain_model(is_new_class)
-        print("✅ Retrain โมเดลสำเร็จ!")
-    
+    # เพิ่มคลาสหรือภาพในคิวเทรน
+    with training_lock:
+        if is_new_class or num_images >= 5:
+            if new_label not in train_queue:
+                train_queue.append(new_label)
+            if not is_training:
+                is_training = True
+                # เริ่มเทรนหลังจากรอ 2 วินาทีเพื่อให้ request อื่นเข้ามา
+                time.sleep(2)  # รอให้ request อื่นเพิ่มใน queue
+                process_training()
+
     return jsonify({"status": "success", "message": f"อัพเดทเป็น {new_label} และเริ่มฝึกโมเดลใหม่"})
 
-def retrain_model(is_new_class):
-    global model, CLASS_NAMES
+def process_training():
+    global model, CLASS_NAMES, is_training, train_queue
+    while train_queue:
+        with training_lock:
+            if not train_queue:
+                is_training = False
+                return
+            label_to_train = train_queue.pop(0)
+        
+        print(f"🚀 เริ่ม retrain โมเดลสำหรับ {label_to_train}...")
+        
+        train_dataset = datasets.ImageFolder(TRAINING_FOLDER, transform=train_transform)
+        train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+        
+        if len(train_dataset) == 0:
+            print("❌ ไม่มีข้อมูลใน food_images_1 ไม่สามารถเทรนได้")
+            is_training = False
+            return
+        
+        new_model = timm.create_model("vit_base_patch16_224", pretrained=False, num_classes=len(CLASS_NAMES))
+        new_model.load_state_dict(model.state_dict(), strict=False)
+        new_model.to(device)
+        
+        optimizer = torch.optim.Adam(new_model.parameters(), lr=0.001 if label_to_train not in CLASS_NAMES else 0.0001)
+        criterion = torch.nn.CrossEntropyLoss()
+        
+        epochs = 5 if label_to_train not in CLASS_NAMES else 3  # ลด epoch เพื่อความเร็ว
+        new_model.train()
+        for epoch in range(epochs):
+            for images, labels in train_loader:
+                images, labels = images.to(device), labels.to(device)
+                optimizer.zero_grad()
+                outputs = new_model(images)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+            print(f"Epoch {epoch+1}/{epochs}, Loss: {loss.item():.4f}")
+        
+        model = new_model
+        model.eval()
+        torch.save(model.state_dict(), MODEL_PATH)
+        print(f"✅ Retrain เสร็จสิ้นสำหรับ {label_to_train}, บันทึกโมเดลที่ {MODEL_PATH}")
     
-    print(f"🚀 เริ่ม retrain โมเดล (ใหม่: {is_new_class})...")
-    
-    train_dataset = datasets.ImageFolder(TRAINING_FOLDER, transform=train_transform)
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-    
-    if len(train_dataset) == 0:
-        print("❌ ไม่มีข้อมูลใน food_images_1 ไม่สามารถเทรนได้")
-        return
-    
-    new_model = timm.create_model("vit_base_patch16_224", pretrained=False, num_classes=len(CLASS_NAMES))
-    new_model.load_state_dict(model.state_dict(), strict=False)
-    new_model.to(device)
-    
-    optimizer = torch.optim.Adam(new_model.parameters(), lr=0.001 if is_new_class else 0.0001)
-    criterion = torch.nn.CrossEntropyLoss()
-    
-    epochs = 10 if is_new_class else 3
-    new_model.train()
-    for epoch in range(epochs):
-        for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = new_model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {loss.item():.4f}")
-    
-    model = new_model
-    model.eval()
-    torch.save(model.state_dict(), MODEL_PATH)
-    print(f"✅ Retrain เสร็จสิ้น บันทึกโมเดลที่ {MODEL_PATH}")
+    with training_lock:
+        is_training = False
 
 def get_next_filename(filename, folder):
     name, ext = os.path.splitext(filename)
