@@ -100,7 +100,8 @@ resetButton.addEventListener('click', () => {
     trainingStatus.style.display = 'none';
 });
 
-// ส่งภาพไป backend
+let savedPath = null;  // 🔥 เพิ่มตัวแปรเก็บค่า path ของรูปภาพ
+
 async function sendImageToBackend(imageData) {
     foodName.textContent = "ชื่ออาหาร: กำลังวิเคราะห์...";
     confidence.textContent = "ความมั่นใจ: -";
@@ -123,70 +124,67 @@ async function sendImageToBackend(imageData) {
         } else {
             foodName.textContent = `ชื่ออาหาร: ${data.food_name}`;
             confidence.innerHTML = `ความมั่นใจ: <span class="${parseFloat(data.confidence) >= 70 ? 'confidence-green' : 'confidence-orange'}">${data.confidence}</span>`;
-            
+
             edgePhoto.src = data.edge_image;
             edgePhoto.style.display = 'block';
-            
-            nutritionInfo.style.display = 'block';
-            while (nutritionTable.rows.length > 1) {
-                nutritionTable.deleteRow(1);
-            }
-            if (data.nutrition && Object.keys(data.nutrition).length > 0) {
-                const units = { calories: "kcal", protein: "g", fat: "g", carbs: "g" };
-                for (const [key, value] of Object.entries(data.nutrition)) {
-                    const row = nutritionTable.insertRow();
-                    const cell1 = row.insertCell(0);
-                    const cell2 = row.insertCell(1);
-                    cell1.textContent = key === "calories" ? "พลังงาน" : key === "protein" ? "โปรตีน" : key === "fat" ? "ไขมัน" : "คาร์โบไฮเดรต";
-                    cell2.textContent = `${value} ${units[key] || ''}`;
-                }
-                saveHistory(data.food_name, data.nutrition.calories);
-            } else {
-                const row = nutritionTable.insertRow();
-                const cell = row.insertCell(0);
-                cell.colSpan = 2;
-                cell.textContent = "ไม่มีข้อมูลโภชนาการสำหรับอาหารนี้";
-                saveHistory(data.food_name, null);
-            }
+
+            savedPath = data.saved_path;  // ✅ บันทึก path ของรูปภาพที่ใช้ทำนาย
+            console.log(`📂 บันทึก savedPath: ${savedPath}`);
 
             if (data.needs_label) {
                 alert(`โมเดลไม่แน่ใจ อาจเป็น "${data.food_name}" หรืออาหารอื่น กรุณาระบุชื่อที่ถูกต้อง`);
                 labelInput.style.display = 'block';
-                submitLabel.onclick = async () => {
-                    const newLabel = document.getElementById('newLabel').value;
-                    const calories = document.getElementById('calories').value;
-                    if (newLabel) {
-                        trainingStatus.style.display = 'block';
-                        try {
-                            const labelResponse = await fetch('/update_label', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    path: data.saved_path,
-                                    label: newLabel,
-                                    nutrition: calories ? { calories: parseInt(calories) } : {}
-                                })
-                            });
-                            if (!labelResponse.ok) throw new Error('การอัพเดทโมเดลล้มเหลว');
-                            const labelData = await labelResponse.json();
-                            foodName.textContent = labelData.message;
-                            labelInput.style.display = 'none';
-                            trainingStatus.style.display = 'none';
-                            saveHistory(newLabel, calories ? parseInt(calories) : null);
-                        } catch (error) {
-                            foodName.textContent = `เกิดข้อผิดพลาด: ${error.message}`;
-                            trainingStatus.style.display = 'none';
-                            labelInput.style.display = 'none';
-                        }
-                    }
-                };
             }
+            submitLabel.onclick = async () => {
+                const newLabelValue = newLabel.value.trim();  // ตัดช่องว่างออก
+                console.log(`📤 ค่า input ที่ได้จาก index.html:`, newLabelValue);
+            
+                if (!newLabelValue) {
+                    alert("❌ กรุณากรอกหรือเลือกชื่ออาหาร");
+                    return;
+                }
+            
+                if (!savedPath) {
+                    alert("❌ ไม่พบ path ของรูปภาพ กรุณาถ่ายภาพใหม่");
+                    return;
+                }
+            
+                console.log(`📤 ส่งค่าไป update_label: path=${savedPath}, label=${newLabelValue}`);
+            
+                try {
+                    const labelResponse = await fetch('/update_label', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            path: savedPath,
+                            label: newLabelValue
+                        })
+                    });
+            
+                    if (!labelResponse.ok) throw new Error('การอัพเดทโมเดลล้มเหลว');
+                    const labelData = await labelResponse.json();
+                    console.log(`✅ ค่า response จาก Flask:`, labelData);
+            
+                    alert(labelData.message);
+                    trainingStatus.style.display = 'none';
+                    labelInput.style.display = 'none';
+            
+                    setTimeout(() => {
+                        alert("🎉 การฝึกโมเดลเสร็จสิ้นแล้ว!");
+                        location.reload();
+                    }, 3000);
+                } catch (error) {
+                    alert(`❌ เกิดข้อผิดพลาด: ${error.message}`);
+                    console.error("🚨 ERROR:", error);
+                }
+            };            
         }
     } catch (error) {
+        console.error("❌ ERROR:", error);
         foodName.textContent = "เกิดข้อผิดพลาดในการเชื่อมต่อ: " + error.message;
-        confidence.textContent = "ความมั่นใจ: -";
     }
 }
+
 
 // โหลดประวัติเมื่อเริ่มต้น
 loadHistory();
