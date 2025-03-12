@@ -1,43 +1,223 @@
+/* ==================== พื้นฐานของเว็บ ==================== */
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Kanit', Arial, sans-serif;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
     text-align: center;
-    margin: 20px;
-}
-
-.container {
+    margin: 0;
+    padding: 20px;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
 }
 
-video, img {
-    width: 100%;
-    max-width: 400px;
+/* ==================== หัวข้อ ==================== */
+h1 {
+    color: #2c3e50;
+    font-size: 2.5em;
+    margin-bottom: 20px;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+h2 {
+    color: #34495e;
+    font-size: 1.5em;
+    margin: 20px 0;
+}
+
+/* ==================== ตารางข้อมูล ==================== */
+table {
+    border-collapse: collapse;
+    width: 80%;
+    max-width: 600px;
+    margin: 20px auto;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     border-radius: 10px;
-    margin-top: 10px;
+    overflow: hidden;
+    background-color: white;
 }
 
-canvas {
-    display: none;
+th, td {
+    border: 1px solid #e0e0e0;
+    padding: 15px;
+    text-align: left;
+    font-size: 1.1em;
 }
 
-button, .upload-btn {
-    padding: 10px;
+th {
+    background-color: #4CAF50;
+    color: white;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+td {
+    color: #333;
+}
+
+tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+tr:hover {
+    background-color: #f1f1f1;
+    transition: background-color 0.3s ease;
+}
+
+/* ==================== ส่วนแสดงผลข้อมูล ==================== */
+.result-container {
+    margin-top: 25px;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    width: 80%;
+    max-width: 600px;
+}
+
+.confidence-green {
+    color: #27ae60;
+    font-weight: bold;
+}
+
+.confidence-orange {
+    color: #e67e22;
+    font-weight: bold;
+}
+
+/* ==================== ปุ่มและกล้อง ==================== */
+button {
     margin: 10px;
-    font-size: 16px;
+    padding: 12px 20px;
+    font-size: 1.1em;
     cursor: pointer;
     border: none;
-    border-radius: 5px;
-    background: #007bff;
+    border-radius: 25px;
     color: white;
+    transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.upload-btn {
-    display: inline-block;
-    background: #28a745;
-    cursor: pointer;
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-input {
+button:active {
+    transform: translateY(0);
+}
+
+#capture {
+    background-color: #007bff;
+}
+
+#uploadButton {
+    background-color: #28a745;
+}
+
+#resetButton {
+    background-color: #dc3545;
+}
+
+#submitLabel {
+    background-color: #ff9800;
+}
+
+video, img#photo {
+    max-width: 90%;
+    width: 100%;
+    border: 3px solid #ddd;
+    border-radius: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+#edgePhoto {
+    max-width: 90%;
+    width: 100%;
+    border: 3px solid #3498db;
+    border-radius: 15px;
+    margin-top: 20px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* ==================== ส่วนกรอกชื่ออาหาร ==================== */
+#labelInput {
     display: none;
+    margin-top: 20px;
+    background-color: #fff0f0;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    width: 80%;
+    max-width: 500px;
+    border-left: 5px solid #e74c3c;
+}
+
+#newLabel, #calories {
+    padding: 10px;
+    font-size: 1.1em;
+    border: 2px solid #ccc;
+    border-radius: 5px;
+    width: 70%;
+    margin-right: 10px;
+    transition: border-color 0.3s;
+}
+
+#newLabel:focus, #calories:focus {
+    border-color: #ff9800;
+    outline: none;
+}
+
+/* ==================== Responsive Design ==================== */
+@media (max-width: 768px) {
+    table, .result-container, #labelInput {
+        width: 90%;
+    }
+    button {
+        padding: 10px 15px;
+        font-size: 1em;
+    }
+    h1 {
+        font-size: 2em;
+    }
+    h2 {
+        font-size: 1.2em;
+    }
+}
+
+/* ==================== Animation ==================== */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.result-container, #nutritionInfo, #labelInput, #edgePhoto {
+    animation: fadeIn 0.5s ease-in;
+}
+
+
+
+#trainingStatus {
+    display: none;
+    margin-top: 20px;
+    padding: 10px;
+    background-color: rgba(52, 152, 219, 0.1);
+    border-radius: 5px;
+    color: #3498db;
+    font-weight: bold;
+}
+
+#historyContainer {
+    margin-top: 20px;
+    width: 80%;
+    max-width: 600px;
+}
+
+#foodHistory li {
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    text-align: left;
 }
