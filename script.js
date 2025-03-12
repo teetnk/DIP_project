@@ -14,16 +14,45 @@ const labelInput = document.getElementById('labelInput');
 const submitLabel = document.getElementById('submitLabel');
 const trainingStatus = document.getElementById('trainingStatus');
 const foodHistory = document.getElementById('foodHistory');
+const foodList = document.getElementById("food-list");
+const newLabel = document.getElementById("newLabel");
+const switchCameraButton = document.getElementById('switchCamera');
 
-// เข้าถึงกล้อง
-navigator.mediaDevices.getUserMedia({ video: true })
-    .then(stream => video.srcObject = stream)
-    .catch(err => {
-        console.error("เกิดข้อผิดพลาดในการเข้าถึงกล้อง: ", err);
-        foodName.textContent = "ไม่สามารถเข้าถึงกล้องได้";
-    });
+let currentStream = null;
+let facingMode = 'user';
 
-// โหลดประวัติจาก localStorage
+function startCamera(facing) {
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+    }
+    
+    const constraints = {
+        video: {
+            facingMode: facing
+        }
+    };
+    
+    navigator.mediaDevices.getUserMedia(constraints)
+        .then(stream => {
+            video.srcObject = stream;
+            currentStream = stream;
+            console.log(`📸 ใช้กล้อง: ${facing}`);
+        })
+        .catch(err => {
+            console.error("เกิดข้อผิดพลาดในการเข้าถึงกล้อง: ", err);
+            foodName.textContent = "ไม่สามารถเข้าถึงกล้องได้: " + err.message;
+            switchCameraButton.disabled = true;
+        });
+}
+
+startCamera(facingMode);
+
+switchCameraButton.addEventListener('click', () => {
+    facingMode = facingMode === 'user' ? 'environment' : 'user';
+    startCamera(facingMode);
+    switchCameraButton.textContent = facingMode === 'user' ? '📷 สลับเป็นกล้องหลัง' : '📷 สลับเป็นกล้องหน้า';
+});
+
 function loadHistory() {
     const history = JSON.parse(localStorage.getItem('foodHistory')) || [];
     foodHistory.innerHTML = '';
@@ -34,7 +63,23 @@ function loadHistory() {
     });
 }
 
-// บันทึกประวัติใน localStorage
+async function loadFoodList() {
+    try {
+        const response = await fetch("/food_list");
+        const foodNames = await response.json();
+        foodList.innerHTML = "";
+        foodNames.forEach(food => {
+            let option = document.createElement("option");
+            option.value = food;
+            foodList.appendChild(option);
+        });
+    } catch (error) {
+        console.error("❌ ไม่สามารถโหลดรายการอาหาร:", error);
+    }
+}
+
+document.addEventListener("DOMContentLoaded", loadFoodList);
+
 function saveHistory(name, calories) {
     let history = JSON.parse(localStorage.getItem('foodHistory')) || [];
     history.unshift({ name, calories });
@@ -43,7 +88,6 @@ function saveHistory(name, calories) {
     loadHistory();
 }
 
-// ถ่ายภาพ
 captureButton.addEventListener('click', () => {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -54,7 +98,6 @@ captureButton.addEventListener('click', () => {
     sendImageToBackend(imageData);
 });
 
-// อัพโหลดไฟล์
 uploadButton.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', (event) => {
     const file = event.target.files[0];
@@ -69,7 +112,6 @@ fileInput.addEventListener('change', (event) => {
     }
 });
 
-// รีเซ็ต
 resetButton.addEventListener('click', () => {
     photo.style.display = 'none';
     edgePhoto.style.display = 'none';
@@ -80,7 +122,8 @@ resetButton.addEventListener('click', () => {
     trainingStatus.style.display = 'none';
 });
 
-// ส่งภาพไป backend
+let savedPath = null;
+
 async function sendImageToBackend(imageData) {
     foodName.textContent = "ชื่ออาหาร: กำลังวิเคราะห์...";
     confidence.textContent = "ความมั่นใจ: -";
@@ -103,70 +146,89 @@ async function sendImageToBackend(imageData) {
         } else {
             foodName.textContent = `ชื่ออาหาร: ${data.food_name}`;
             confidence.innerHTML = `ความมั่นใจ: <span class="${parseFloat(data.confidence) >= 70 ? 'confidence-green' : 'confidence-orange'}">${data.confidence}</span>`;
-            
+
             edgePhoto.src = data.edge_image;
             edgePhoto.style.display = 'block';
-            
+
+            savedPath = data.saved_path;
+            console.log(`📂 บันทึก savedPath: ${savedPath}`);
+
             nutritionInfo.style.display = 'block';
-            while (nutritionTable.rows.length > 1) {
-                nutritionTable.deleteRow(1);
-            }
+            while (nutritionTable.rows.length > 1) nutritionTable.deleteRow(1);
             if (data.nutrition && Object.keys(data.nutrition).length > 0) {
-                const units = { calories: "kcal", protein: "g", fat: "g", carbs: "g" };
+                const units = { calories: "kcal" };
                 for (const [key, value] of Object.entries(data.nutrition)) {
-                    const row = nutritionTable.insertRow();
-                    const cell1 = row.insertCell(0);
-                    const cell2 = row.insertCell(1);
-                    cell1.textContent = key === "calories" ? "พลังงาน" : key === "protein" ? "โปรตีน" : key === "fat" ? "ไขมัน" : "คาร์โบไฮเดรต";
-                    cell2.textContent = `${value} ${units[key] || ''}`;
+                    if (key !== "ingredients") {  // ไม่แสดง ingredients ในตารางนี้
+                        const row = nutritionTable.insertRow();
+                        row.insertCell(0).textContent = key === "calories" ? "พลังงาน" : key;
+                        row.insertCell(1).textContent = `${value} ${units[key] || ''}`;
+                    }
                 }
-                saveHistory(data.food_name, data.nutrition.calories);
+                // เพิ่มแถวสำหรับ ingredients
+                const row = nutritionTable.insertRow();
+                row.insertCell(0).textContent = "วัตถุดิบ";
+                row.insertCell(1).textContent = data.nutrition.ingredients ? data.nutrition.ingredients.join(", ") : "ไม่มีข้อมูล";
             } else {
                 const row = nutritionTable.insertRow();
-                const cell = row.insertCell(0);
-                cell.colSpan = 2;
-                cell.textContent = "ไม่มีข้อมูลโภชนาการสำหรับอาหารนี้";
-                saveHistory(data.food_name, null);
+                row.insertCell(0).colSpan = 2;
+                row.insertCell(0).textContent = "ไม่มีข้อมูลโภชนาการ";
             }
+
+            saveHistory(data.food_name, data.nutrition.calories || null);
 
             if (data.needs_label) {
                 alert(`โมเดลไม่แน่ใจ อาจเป็น "${data.food_name}" หรืออาหารอื่น กรุณาระบุชื่อที่ถูกต้อง`);
                 labelInput.style.display = 'block';
-                submitLabel.onclick = async () => {
-                    const newLabel = document.getElementById('newLabel').value;
-                    const calories = document.getElementById('calories').value;
-                    if (newLabel) {
-                        trainingStatus.style.display = 'block';
-                        try {
-                            const labelResponse = await fetch('/update_label', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    path: data.saved_path,
-                                    label: newLabel,
-                                    nutrition: calories ? { calories: parseInt(calories) } : {}
-                                })
-                            });
-                            if (!labelResponse.ok) throw new Error('การอัพเดทโมเดลล้มเหลว');
-                            const labelData = await labelResponse.json();
-                            foodName.textContent = labelData.message;
-                            labelInput.style.display = 'none';
-                            trainingStatus.style.display = 'none';
-                            saveHistory(newLabel, calories ? parseInt(calories) : null);
-                        } catch (error) {
-                            foodName.textContent = `เกิดข้อผิดพลาด: ${error.message}`;
-                            trainingStatus.style.display = 'none';
-                            labelInput.style.display = 'none';
-                        }
-                    }
-                };
             }
+            submitLabel.onclick = async () => {
+                const newLabelValue = newLabel.value.trim();
+                const calories = document.getElementById('calories').value;
+                console.log(`📤 ค่า input: label=${newLabelValue}, calories=${calories}`);
+            
+                if (!newLabelValue) {
+                    alert("❌ กรุณากรอกหรือเลือกชื่ออาหาร");
+                    return;
+                }
+            
+                if (!savedPath) {
+                    alert("❌ ไม่พบ path ของรูปภาพ กรุณาถ่ายภาพใหม่");
+                    return;
+                }
+            
+                try {
+                    const labelResponse = await fetch('/update_label', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            path: savedPath,
+                            label: newLabelValue,
+                            nutrition: calories ? { calories: parseInt(calories), ingredients: ["ไม่มีข้อมูล"] } : {}
+                        })
+                    });
+            
+                    if (!labelResponse.ok) throw new Error('การอัพเดทโมเดลล้มเหลว');
+                    const labelData = await labelResponse.json();
+                    console.log(`✅ Response:`, labelData);
+            
+                    alert(labelData.message);
+                    trainingStatus.style.display = 'block';
+                    labelInput.style.display = 'none';
+            
+                    setTimeout(() => {
+                        trainingStatus.style.display = 'none';
+                        alert("🎉 การฝึกโมเดลเสร็จสิ้นแล้ว!");
+                        location.reload();
+                    }, 3000);
+                } catch (error) {
+                    alert(`❌ เกิดข้อผิดพลาด: ${error.message}`);
+                    console.error("🚨 ERROR:", error);
+                }
+            };            
         }
     } catch (error) {
+        console.error("❌ ERROR:", error);
         foodName.textContent = "เกิดข้อผิดพลาดในการเชื่อมต่อ: " + error.message;
-        confidence.textContent = "ความมั่นใจ: -";
     }
 }
 
-// โหลดประวัติเมื่อเริ่มต้น
 loadHistory();
