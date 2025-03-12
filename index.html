@@ -13,6 +13,7 @@
     <div>
         <video id="cameraPreview" autoplay playsinline></video>
         <button id="capture">📸 ถ่ายภาพ</button>
+        <button id="switchCamera">📷 สลับเป็นกล้องหลัง</button>
         <canvas id="canvas" style="display: none;"></canvas>
     </div>
     <img id="photo" src="#" alt="รูปภาพที่ถ่าย" style="display: none; margin-top: 10px;">
@@ -27,14 +28,15 @@
         <p id="foodName">ชื่ออาหาร: -</p>
         <p id="confidence">ความมั่นใจ: -</p>
     </div>
-
+    
     <div id="labelInput" style="display: none;">
-        <label for="newLabel">โมเดลไม่มั่นใจ กรุณาระบุชื่ออาหาร: </label>
-        <input type="text" id="newLabel" placeholder="เช่น ขนมตาล">
+        <label for="newLabel">โมเดลไม่มั่นใจ กรุณาเลือกหรือพิมพ์ชื่ออาหาร: </label>
+        <input list="food-list" id="newLabel" name="newLabel" placeholder="เลือกหรือพิมพ์ชื่ออาหาร">
+        <datalist id="food-list"></datalist>
         <label for="calories">แคลอรี่: </label>
-        <input type="number" id="calories" placeholder="เช่น 550" min="0">
+        <input type="number" id="calories" placeholder="เช่น 200" min="0">
         <button id="submitLabel">✔️ ส่ง</button>
-    </div>
+    </div>    
 
     <div id="trainingStatus" style="display: none; margin-top: 20px; color: #3498db;">
         <p>⏳ กำลังอัพเดทโมเดล...</p>
