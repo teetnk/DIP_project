@@ -199,6 +199,8 @@ video, img#photo {
     border: 1px solid rgba(52, 152, 219, 0.3);
 }
 
+/* ... (โค้ดเดิมด้านบนจนถึง #historyContainer) ... */
+
 #historyContainer {
     margin-top: 30px;
     width: 85%;
@@ -218,6 +220,19 @@ video, img#photo {
 #foodHistory li:hover {
     transform: translateX(5px);
 }
+
+#foodHistory a {
+    text-decoration: none;
+    color: #2d5a50;
+    font-weight: 500;
+    transition: color 0.3s;
+}
+
+#foodHistory a:hover {
+    color: #219653;
+}
+
+/* ... (โค้ดเดิมด้านล่างจนถึง @media และ animation) ... */
 
 /* ==================== Responsive Design ==================== */
 @media (max-width: 768px) {
