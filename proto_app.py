@@ -186,40 +186,56 @@ def predict():
 @app.route("/update_label", methods=["POST"])
 def update_label():
     global model, CLASS_NAMES
-    
+
     data = request.get_json()
+    print(f"📥 ได้รับค่า: {data}")  # ✅ DEBUG LOG เพื่อตรวจสอบค่าที่ส่งมา
+
     if not data or 'path' not in data or 'label' not in data:
-        return jsonify({'error': 'Missing path or label'}), 400
-    
+        print("❌ ข้อมูลไม่ครบ")
+        return jsonify({'error': '❌ ข้อมูลไม่ครบ'}), 400
+
     old_path = data['path']
-    new_label = data['label']
-    nutrition = data.get('nutrition', {})
-    
+    new_label = str(data['label']).strip()  # ✅ ป้องกันข้อมูลผิดประเภท
+
+    print(f"📂 ค่าที่ได้รับ: path={old_path}, label={new_label}")
+
+    if not old_path or not new_label:
+        print("❌ ค่า path หรือ label ว่างเปล่า")
+        return jsonify({'error': '❌ ค่า path หรือ label ว่างเปล่า'}), 400
+
+    if not os.path.exists(old_path):
+        print(f"❌ ไฟล์ไม่พบ: {old_path}")
+        return jsonify({'error': f"❌ ไฟล์ไม่พบ: {old_path}"}), 400
+
     new_folder = os.path.join(TRAINING_FOLDER, new_label)
     os.makedirs(new_folder, exist_ok=True)
     new_path = os.path.join(new_folder, os.path.basename(old_path))
+
     shutil.move(old_path, new_path)
-    
-    if new_label not in NUTRITION_DATA and nutrition:
-        NUTRITION_DATA[new_label] = nutrition
-        with open(NUTRITION_FILE, "w", encoding="utf-8") as f:
-            json.dump(NUTRITION_DATA, f, ensure_ascii=False, indent=2)
-        print(f"✅ เพิ่ม {new_label} ใน {NUTRITION_FILE}")
-    
+    print(f"📂 ย้ายไฟล์จาก {old_path} ไปยัง {new_path}")
+
+    if not os.path.exists(new_path):
+        print(f"❌ ย้ายไฟล์ไม่สำเร็จ: {new_path}")
+        return jsonify({'error': f"❌ ย้ายไฟล์ไม่สำเร็จ: {new_path}"}), 400
+
     is_new_class = new_label not in CLASS_NAMES
     if is_new_class:
         CLASS_NAMES.append(new_label)
         with open("food_classes.json", "w") as f:
             json.dump(CLASS_NAMES, f)
         print(f"✅ เพิ่ม {new_label} ใน food_classes.json")
-        retrain_model(is_new_class=True)
-    
+
     num_images = len(os.listdir(new_folder))
     print(f"📸 จำนวนภาพใน {new_label}: {num_images}")
-    if not is_new_class and num_images >= 3:
-        retrain_model(is_new_class=False)
-    
-    return jsonify({"status": "success", "message": f"อัพเดทเป็น {new_label}"})
+
+    if is_new_class or num_images >= 1:
+        print("🔄 กำลังเรียก retrain_model()...")
+        retrain_model(is_new_class)
+        print("✅ Retrain โมเดลสำเร็จ!")
+
+    return jsonify({"status": "success", "message": f"อัพเดทเป็น {new_label} และเริ่มฝึกโมเดลใหม่"})
+
+
 
 def retrain_model(is_new_class):
     global model, CLASS_NAMES
