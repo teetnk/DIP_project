@@ -58,7 +58,19 @@ function loadHistory() {
     foodHistory.innerHTML = '';
     history.forEach(item => {
         const li = document.createElement('li');
-        li.textContent = `${item.name} (${item.calories || '-'} kcal)`;
+        const link = document.createElement('a');
+        link.href = item.path; // ใช้ saved_path เป็น URL
+        link.textContent = `${item.name} (${item.calories || '-'} kcal)`;
+        link.target = '_blank'; // เปิดในแท็บใหม่
+        link.style.textDecoration = 'none'; // ลบเส้นใต้ของลิงก์
+        link.style.color = '#2d5a50'; // สีลิงก์ให้เข้ากับโทน
+        link.addEventListener('mouseover', () => {
+            link.style.color = '#219653'; // เปลี่ยนสีเมื่อ hover
+        });
+        link.addEventListener('mouseout', () => {
+            link.style.color = '#2d5a50';
+        });
+        li.appendChild(link);
         foodHistory.appendChild(li);
     });
 }
@@ -80,9 +92,9 @@ async function loadFoodList() {
 
 document.addEventListener("DOMContentLoaded", loadFoodList);
 
-function saveHistory(name, calories) {
+function saveHistory(name, calories, path) {
     let history = JSON.parse(localStorage.getItem('foodHistory')) || [];
-    history.unshift({ name, calories });
+    history.unshift({ name, calories, path }); // เพิ่ม saved_path
     if (history.length > 5) history.pop();
     localStorage.setItem('foodHistory', JSON.stringify(history));
     loadHistory();
@@ -158,13 +170,12 @@ async function sendImageToBackend(imageData) {
             if (data.nutrition && Object.keys(data.nutrition).length > 0) {
                 const units = { calories: "kcal" };
                 for (const [key, value] of Object.entries(data.nutrition)) {
-                    if (key !== "ingredients") {  // ไม่แสดง ingredients ในตารางนี้
+                    if (key !== "ingredients") {
                         const row = nutritionTable.insertRow();
                         row.insertCell(0).textContent = key === "calories" ? "พลังงาน" : key;
                         row.insertCell(1).textContent = `${value} ${units[key] || ''}`;
                     }
                 }
-                // เพิ่มแถวสำหรับ ingredients
                 const row = nutritionTable.insertRow();
                 row.insertCell(0).textContent = "วัตถุดิบ";
                 row.insertCell(1).textContent = data.nutrition.ingredients ? data.nutrition.ingredients.join(", ") : "ไม่มีข้อมูล";
@@ -174,7 +185,7 @@ async function sendImageToBackend(imageData) {
                 row.insertCell(0).textContent = "ไม่มีข้อมูลโภชนาการ";
             }
 
-            saveHistory(data.food_name, data.nutrition.calories || null);
+            saveHistory(data.food_name, data.nutrition.calories || null, savedPath); // เก็บ saved_path
 
             if (data.needs_label) {
                 alert(`โมเดลไม่แน่ใจ อาจเป็น "${data.food_name}" หรืออาหารอื่น กรุณาระบุชื่อที่ถูกต้อง`);
