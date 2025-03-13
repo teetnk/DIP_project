@@ -13,12 +13,13 @@ import cv2
 import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import datasets
+import time
 
 app = Flask(__name__)
 CORS(app)
 
 # 📌 กำหนดโฟลเดอร์
-UPLOAD_FOLDER = r"C:\งานตั้น\DIP\DIP_project\food_images_1\test_food"
+UPLOAD_FOLDER = r"C:\งานตั้น\DIP\DIP_project\food_images_1"
 STATIC_FOLDER = "static"
 TRAINING_FOLDER = "food_images_1"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -134,11 +135,12 @@ def detect_edges(image):
 def predict_image(image):
     enhanced_image = enhance_image(image)
     img = predict_transform(enhanced_image).unsqueeze(0).to(device)
+
     with torch.no_grad():
         output = model(img)
         probs = torch.nn.functional.softmax(output, dim=1)
         conf, predicted_idx = torch.max(probs, 1)
-    
+
     predicted_class = CLASS_NAMES[predicted_idx.item()]
     confidence = conf.item() * 100
     nutrition = NUTRITION_DATA.get(predicted_class, {})
@@ -147,7 +149,7 @@ def predict_image(image):
     edge_buffer = BytesIO()
     edge_image.save(edge_buffer, format="JPEG")
     edge_data = base64.b64encode(edge_buffer.getvalue()).decode('utf-8')
-    
+
     print(f"🔍 ทำนาย: {predicted_class} (Confidence: {confidence:.2f}%)")
     return predicted_class, confidence, nutrition, edge_data
 
@@ -166,7 +168,7 @@ def predict():
     if confidence >= 70:
         class_folder = os.path.join(UPLOAD_FOLDER, food_name)
     else:
-        class_folder = os.path.join(UPLOAD_FOLDER, "unknown")
+        class_folder = os.path.join(UPLOAD_FOLDER, "food_data")
     os.makedirs(class_folder, exist_ok=True)
     filename = get_next_filename(f"{food_name}.jpg", class_folder)
     file_path = os.path.join(class_folder, filename)
@@ -188,14 +190,14 @@ def update_label():
     global model, CLASS_NAMES
 
     data = request.get_json()
-    print(f"📥 ได้รับค่า: {data}")  # ✅ DEBUG LOG เพื่อตรวจสอบค่าที่ส่งมา
+    print(f"📥 ได้รับค่า: {data}")  
 
     if not data or 'path' not in data or 'label' not in data:
         print("❌ ข้อมูลไม่ครบ")
         return jsonify({'error': '❌ ข้อมูลไม่ครบ'}), 400
 
     old_path = data['path']
-    new_label = str(data['label']).strip()  # ✅ ป้องกันข้อมูลผิดประเภท
+    new_label = str(data['label']).strip()
 
     print(f"📂 ค่าที่ได้รับ: path={old_path}, label={new_label}")
 
@@ -203,14 +205,24 @@ def update_label():
         print("❌ ค่า path หรือ label ว่างเปล่า")
         return jsonify({'error': '❌ ค่า path หรือ label ว่างเปล่า'}), 400
 
+    # ✅ ตรวจสอบว่าไฟล์ถูกย้ายไปแล้วหรือไม่
     if not os.path.exists(old_path):
-        print(f"❌ ไฟล์ไม่พบ: {old_path}")
-        return jsonify({'error': f"❌ ไฟล์ไม่พบ: {old_path}"}), 400
+        possible_path = os.path.join(TRAINING_FOLDER, new_label, os.path.basename(old_path))
+        if os.path.exists(possible_path):
+            print(f"📂 พบไฟล์ที่ถูกย้ายไปยัง: {possible_path}")
+            old_path = possible_path
+        else:
+            print(f"❌ ไฟล์ไม่พบ: {old_path}")
+            return jsonify({'error': f"❌ ไฟล์ไม่พบ: {old_path}"}), 400
 
+    # ✅ สร้างโฟลเดอร์ปลายทาง
     new_folder = os.path.join(TRAINING_FOLDER, new_label)
     os.makedirs(new_folder, exist_ok=True)
+
+    # ✅ กำหนดพาธใหม่ของไฟล์
     new_path = os.path.join(new_folder, os.path.basename(old_path))
 
+    # ✅ ย้ายไฟล์ไปยังโฟลเดอร์ใหม่
     shutil.move(old_path, new_path)
     print(f"📂 ย้ายไฟล์จาก {old_path} ไปยัง {new_path}")
 
@@ -218,6 +230,7 @@ def update_label():
         print(f"❌ ย้ายไฟล์ไม่สำเร็จ: {new_path}")
         return jsonify({'error': f"❌ ย้ายไฟล์ไม่สำเร็จ: {new_path}"}), 400
 
+    # ✅ อัปเดต class ถ้าเป็นหมวดหมู่ใหม่
     is_new_class = new_label not in CLASS_NAMES
     if is_new_class:
         CLASS_NAMES.append(new_label)
@@ -225,53 +238,56 @@ def update_label():
             json.dump(CLASS_NAMES, f)
         print(f"✅ เพิ่ม {new_label} ใน food_classes.json")
 
-    num_images = len(os.listdir(new_folder))
-    print(f"📸 จำนวนภาพใน {new_label}: {num_images}")
+    # ✅ เทรนเฉพาะภาพที่อัปโหลด
+    print(f"🔄 กำลังเรียก retrain_model() สำหรับ {new_path}")
+    retrain_model(new_path, new_label)
+    print("✅ Retrain เฉพาะภาพเดียวเสร็จสิ้น!")
 
-    if is_new_class or num_images >= 1:
-        print("🔄 กำลังเรียก retrain_model()...")
-        retrain_model(is_new_class)
-        print("✅ Retrain โมเดลสำเร็จ!")
+    return jsonify({"status": "success", "message": f"อัพเดทเป็น {new_label} และฝึกโมเดลเฉพาะภาพนี้แล้ว"})
 
-    return jsonify({"status": "success", "message": f"อัพเดทเป็น {new_label} และเริ่มฝึกโมเดลใหม่"})
-
-
-
-def retrain_model(is_new_class):
+def retrain_model(image_path, label):
     global model, CLASS_NAMES
-    
-    print(f"🚀 เริ่ม retrain โมเดล (ใหม่: {is_new_class})...")
-    
-    train_dataset = datasets.ImageFolder(TRAINING_FOLDER, transform=train_transform)
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-    
-    if len(train_dataset) == 0:
-        print("❌ ไม่มีข้อมูลใน food_images_1 ไม่สามารถเทรนได้")
-        return
-    
+
+    print(f"🚀 เริ่มเทรนเฉพาะภาพใหม่: {image_path} ในคลาส {label}")
+
+    # ✅ โหลดรูปใหม่และแปลงให้เหมาะสมกับโมเดล
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+    ])
+
+    img = Image.open(image_path).convert("RGB")
+    img = transform(img).unsqueeze(0).to(device)
+
+    # ✅ ใช้โมเดลเดิม และกำหนด Optimizer
     new_model = timm.create_model("vit_base_patch16_224", pretrained=False, num_classes=len(CLASS_NAMES))
     new_model.load_state_dict(model.state_dict(), strict=False)
     new_model.to(device)
-    
-    optimizer = torch.optim.Adam(new_model.parameters(), lr=0.001 if is_new_class else 0.0001)
-    criterion = torch.nn.CrossEntropyLoss()
-    
-    epochs = 10 if is_new_class else 3
     new_model.train()
+
+    optimizer = torch.optim.Adam(new_model.parameters(), lr=0.0001)
+    criterion = torch.nn.CrossEntropyLoss()
+
+    # ✅ แปลง Label เป็น Tensor
+    label_idx = CLASS_NAMES.index(label)
+    label_tensor = torch.tensor([label_idx], dtype=torch.long).to(device)
+
+    # ✅ เทรนเฉพาะ 3-5 Epoch
+    epochs = 3
     for epoch in range(epochs):
-        for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = new_model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {loss.item():.4f}")
-    
+        optimizer.zero_grad()
+        outputs = new_model(img)
+        loss = criterion(outputs, label_tensor)
+        loss.backward()
+        optimizer.step()
+        print(f"🟢 Epoch {epoch+1}/{epochs}, Loss: {loss.item():.4f}")
+
+    # ✅ บันทึกโมเดลใหม่
     model = new_model
     model.eval()
     torch.save(model.state_dict(), MODEL_PATH)
-    print(f"✅ Retrain เสร็จสิ้น บันทึกโมเดลที่ {MODEL_PATH}")
+    print(f"✅ โมเดลอัปเดตเสร็จสิ้น บันทึกที่ {MODEL_PATH}")
 
 def get_next_filename(filename, folder):
     name, ext = os.path.splitext(filename)
