@@ -187,7 +187,8 @@ async function sendImageToBackend(imageData) {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             path: savedPath,
-                            label: newLabelValue
+                            label: newLabelValue,
+                            nutrition: calories ? { calories: parseInt(calories), ingredients: ["ไม่มีข้อมูล"] } : {}
                         })
                     });
             
