@@ -17,31 +17,34 @@ const foodHistory = document.getElementById('foodHistory');
 const foodList = document.getElementById("food-list");
 const newLabel = document.getElementById("newLabel");
 
-// เข้าถึงกล้อง
-navigator.mediaDevices.getUserMedia({ video: true })
-    .then(stream => video.srcObject = stream)
-    .catch(err => {
-        console.error("เกิดข้อผิดพลาดในการเข้าถึงกล้อง: ", err);
-        foodName.textContent = "ไม่สามารถเข้าถึงกล้องได้";
-    });
-
 // โหลดประวัติจาก localStorage
 function loadHistory() {
     const history = JSON.parse(localStorage.getItem('foodHistory')) || [];
     foodHistory.innerHTML = '';
     history.forEach(item => {
         const li = document.createElement('li');
-        li.textContent = `${item.name} (${item.calories || '-'} kcal)`;
+        const link = document.createElement('a');
+        link.href = item.path; // ใช้ saved_path เป็น URL
+        link.textContent = `${item.name} (${item.calories || '-'} kcal)`;
+        link.target = '_blank'; // เปิดในแท็บใหม่
+        link.style.textDecoration = 'none'; // ลบเส้นใต้ของลิงก์
+        link.style.color = '#2d5a50'; // สีลิงก์ให้เข้ากับโทน
+        link.addEventListener('mouseover', () => {
+            link.style.color = '#219653'; // เปลี่ยนสีเมื่อ hover
+        });
+        link.addEventListener('mouseout', () => {
+            link.style.color = '#2d5a50';
+        });
+        li.appendChild(link);
         foodHistory.appendChild(li);
     });
 }
 
 async function loadFoodList() {
     try {
-        const response = await fetch("/food_list");  // ดึงข้อมูลจาก Flask
+        const response = await fetch("/food_list");
         const foodNames = await response.json();
-
-        foodList.innerHTML = "";  // ล้างค่าที่มีอยู่ก่อนหน้า
+        foodList.innerHTML = "";
         foodNames.forEach(food => {
             let option = document.createElement("option");
             option.value = food;
@@ -130,6 +133,27 @@ async function sendImageToBackend(imageData) {
 
             savedPath = data.saved_path;  // ✅ บันทึก path ของรูปภาพที่ใช้ทำนาย
             console.log(`📂 บันทึก savedPath: ${savedPath}`);
+            nutritionInfo.style.display = 'block';
+            while (nutritionTable.rows.length > 1) nutritionTable.deleteRow(1);
+            if (data.nutrition && Object.keys(data.nutrition).length > 0) {
+                const units = { calories: "kcal" };
+                for (const [key, value] of Object.entries(data.nutrition)) {
+                    if (key !== "ingredients") {
+                        const row = nutritionTable.insertRow();
+                        row.insertCell(0).textContent = key === "calories" ? "พลังงาน" : key;
+                        row.insertCell(1).textContent = `${value} ${units[key] || ''}`;
+                    }
+                }
+                const row = nutritionTable.insertRow();
+                row.insertCell(0).textContent = "วัตถุดิบ";
+                row.insertCell(1).textContent = data.nutrition.ingredients ? data.nutrition.ingredients.join(", ") : "ไม่มีข้อมูล";
+            } else {
+                const row = nutritionTable.insertRow();
+                row.insertCell(0).colSpan = 2;
+                row.insertCell(0).textContent = "ไม่มีข้อมูลโภชนาการ";
+            }
+
+            saveHistory(data.food_name, data.nutrition.calories || null, savedPath); // เก็บ saved_path
 
             if (parseFloat(data.confidence) >= 70) {
                 confirmFoodName(data.food_name, data.confidence);
