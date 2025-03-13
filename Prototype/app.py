@@ -231,8 +231,10 @@ def update_label():
 
     old_path = data['path']
     new_label = str(data['label']).strip()
+    nutrition = data.get('nutrition', {})
 
     print(f"📂 ค่าที่ได้รับ: path={old_path}, label={new_label}")
+    print(f"📂 ค่าที่ได้รับ: path={old_path}, label={new_label}, nutrition={nutrition}")
 
     if not old_path or not new_label:
         print("❌ ค่า path หรือ label ว่างเปล่า")
