@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI วิเคราะห์อาหาร</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<style>
+    #confirmationContainer {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+        text-align: center;
+    }
+
+    .btn-confirm {
+        background: #3498db;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        margin: 5px;
+        cursor: pointer;
+        border-radius: 5px;
+        font-size: 16px;
+    }
+
+    .btn-confirm:hover {
+        opacity: 0.8;
+    }
+</style>
+<body>
+    <h1>🍱 AI วิเคราะห์อาหาร</h1>
+
+    <div>
+        <video id="cameraPreview" autoplay playsinline></video>
+        <button id="capture">📸 ถ่ายภาพ</button>
+        <canvas id="canvas" style="display: none;"></canvas>
+    </div>
+    <img id="photo" src="#" alt="รูปภาพที่ถ่าย" style="display: none; margin-top: 10px;">
+    <img id="edgePhoto" src="#" alt="ภาพขอบอาหาร" style="display: none; margin-top: 10px;">
+
+    <h2>📂 หรือเลือกไฟล์จากแกลเลอรี่</h2>
+    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+    <button id="uploadButton">⬆️ อัพโหลดไฟล์</button>
+    <button id="resetButton">🔄 ถ่ายใหม่</button>
+
+    <div class="result-container">
+        <p id="foodName">ชื่ออาหาร: -</p>
+        <p id="confidence">ความมั่นใจ: -</p>
+    </div>
+    
+    <div id="labelInput" style="display: none;">
+        <label for="newLabel">โมเดลไม่มั่นใจ กรุณาเลือกหรือพิมพ์ชื่ออาหาร: </label>
+        <input list="food-list" id="newLabel" name="newLabel" placeholder="เลือกหรือพิมพ์ชื่ออาหาร">
+        <datalist id="food-list"></datalist>
+        <button id="submitLabel">✔️ ส่ง</button>
+    </div>    
+
+    <div id="trainingStatus" style="display: none; margin-top: 20px; color: #3498db;">
+        <p>⏳ กำลังอัพเดทโมเดล...</p>
+    </div>
+
+    <div id="nutritionInfo" style="display: none;">
+        <h3>🍽️ ข้อมูลโภชนาการ</h3>
+        <table id="nutritionTable">
+            <tr>
+                <th>ข้อมูล</th>
+                <th>ปริมาณ</th>
+            </tr>
+        </table>
+    </div>
+
+    <div id="historyContainer" style="margin-top: 20px;">
+        <h3>📜 ประวัติอาหารล่าสุด</h3>
+        <ul id="foodHistory" style="list-style: none; padding: 0;"></ul>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
