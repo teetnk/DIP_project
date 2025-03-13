@@ -31,6 +31,7 @@ print(f"🔥 ใช้: {device}")
 
 # 📌 โหลดโมเดลและข้อมูล
 MODEL_PATH = "food_model_vit_best.pth"
+CLASS_FILE = "food_classes.json"
 NUTRITION_FILE = "food_nutrition.json"
 
 # โหลด CLASS_NAMES จาก food_classes.json
@@ -162,6 +163,9 @@ def detect_edges(image):
     return Image.fromarray(edges_rgb)
 
 def predict_image(image):
+    if NUTRITION_DATA is None:
+        return None, 0, {}, ""
+    
     enhanced_image = enhance_image(image)
     img = predict_transform(enhanced_image).unsqueeze(0).to(device)
 
