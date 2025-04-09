@@ -1,3 +1,8 @@
+/*
+Development by :
+Thanakorn Sutakiatsakul
+Piyachok Ridsadaeng
+*/
 /* ==================== พื้นฐานของเว็บ ==================== */
 body {
     font-family: 'Kanit', Arial, sans-serif;
