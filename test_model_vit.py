@@ -1,3 +1,7 @@
+"""
+Development by :
+Thanakorn Sutakiatsakul
+"""
 import torch
 import timm
 import torchvision.transforms as transforms
